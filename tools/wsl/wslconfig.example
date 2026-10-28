@@ -1,0 +1,9 @@
+# Copy to  C:\Users\<you>\.wslconfig  then run:  wsl --shutdown
+# Mirrored networking puts WSL on the host LAN so ROS2 DDS discovery reaches
+# the laptop (192.168.1.220). Note: wsl --shutdown stops ALL distros, incl.
+# docker-desktop.
+[wsl2]
+networkingMode=mirrored
+
+[experimental]
+hostAddressLoopback=true

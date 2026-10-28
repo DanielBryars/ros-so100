@@ -159,3 +159,14 @@ approximate and some joints may move inverted. Calibration is the next step.
 ### Next
 - [ ] Calibrate per-joint zero offset + direction sign.
 - [ ] Optional: RViz on the Windows box via WSL2 (mirrored networking + ROS2 in WSL).
+
+## RViz on Windows via WSL2 — WORKING (2026-10-28)
+
+Ran RViz on the Windows PC in WSL2 (Ubuntu 24.04, ROS2 Jazzy), viewing the
+laptop's live arm over the LAN via Fast DDS. Full writeup: docs/wsl-rviz.md;
+helper scripts in tools/wsl/.
+
+Key steps: mirrored WSL networking (shared LAN), install ros-jazzy-rviz2, open
+the Windows Hyper-V firewall for WSL inbound (default was Block — this was the
+final blocker), stage meshes locally for package:// resolution. Jazzy<->Lyrical
+DDS interop works for JointState/TF/robot_description.
