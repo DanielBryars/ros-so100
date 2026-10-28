@@ -58,3 +58,8 @@ venv/
 
 # Vendored SDK archive (extracted tree is kept, tarball is not)
 vendor/*.tar.gz
+
+# colcon build artifacts (ROS2 workspace)
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/

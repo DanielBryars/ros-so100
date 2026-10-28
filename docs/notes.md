@@ -116,3 +116,46 @@ Verified: node `/so100_joint_state_publisher`, topic `/joint_states` at a steady
 ### Next
 - [ ] Add a URDF + robot_state_publisher, then visualize in RViz.
 - [ ] Optionally add velocity/effort from Present_Speed/Present_Load.
+
+## RViz visualization (2026-10-28)
+
+Visualized the live arm in RViz on the laptop's own display.
+
+- **Model:** reused the community description package `brukg/SO-100-arm`
+  (`so_arm_100_description`, Apache-2.0), copied into `ros2_ws/src/`. It ships a
+  pre-generated plain `urdf/so_arm_100_5dof.urdf`, so **no xacro needed** (xacro is
+  not installed here). Built with colcon; meshes resolve via `package://`.
+- **Launch:** `so100_telemetry/launch/display.launch.py` starts
+  robot_state_publisher (loads URDF), our joint_state_publisher (reads servos), and
+  rviz2 (with the package's rviz config). Toggle RViz with `use_rviz:=false`.
+- **Joint name mapping** (servo ID -> URDF joint): 1 Shoulder_Rotation,
+  2 Shoulder_Pitch, 3 Elbow, 4 Wrist_Pitch, 5 Wrist_Roll, 6 Gripper. Passed to our
+  node via the `joint_names` parameter (no code change).
+- **Verified:** `/joint_states`, `/robot_description`, `/tf` all present; live TF
+  base_link -> Moving_Jaw reflects the real pose; RViz got OpenGL 4.6 (direct render).
+
+Run it:
+
+```bash
+source /opt/ros/lyrical/setup.bash
+source ~/git/ros-so100/ros2_ws/install/setup.bash
+ros2 launch so100_telemetry display.launch.py
+```
+
+### Gotchas worth remembering
+- **GUI over SSH:** launch on the laptop's display with `DISPLAY=:0` and
+  `XAUTHORITY=/home/danb/.Xauthority` (discover it from a :0 process's /proc environ).
+  Use `setsid nohup ... &` + `disown` to keep it alive after SSH exits.
+- **`pkill -f <pattern>` self-matches over SSH**: the pattern text is in the remote
+  shell's own argv, so `pkill -f joint_state_publisher` kills its own session
+  (ssh exit 255). Kill by PID, or use a pattern that excludes the shell.
+- **`timeout ros2 run ...`** can orphan the actual node (child survives the killed
+  parent). Check with `pgrep -af` and clean up by PID.
+
+### Uncalibrated pose
+Positions are raw radians (no home offset / direction sign), so the RViz pose is
+approximate and some joints may move inverted. Calibration is the next step.
+
+### Next
+- [ ] Calibrate per-joint zero offset + direction sign.
+- [ ] Optional: RViz on the Windows box via WSL2 (mirrored networking + ROS2 in WSL).
