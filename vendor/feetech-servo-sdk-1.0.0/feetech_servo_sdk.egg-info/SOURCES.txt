@@ -1,0 +1,15 @@
+LICENSE
+README.md
+setup.py
+feetech_servo_sdk.egg-info/PKG-INFO
+feetech_servo_sdk.egg-info/SOURCES.txt
+feetech_servo_sdk.egg-info/dependency_links.txt
+feetech_servo_sdk.egg-info/requires.txt
+feetech_servo_sdk.egg-info/top_level.txt
+scservo_sdk/__init__.py
+scservo_sdk/group_sync_read.py
+scservo_sdk/group_sync_write.py
+scservo_sdk/packet_handler.py
+scservo_sdk/port_handler.py
+scservo_sdk/protocol_packet_handler.py
+scservo_sdk/scservo_def.py

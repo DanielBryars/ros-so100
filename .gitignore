@@ -49,3 +49,12 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Vendored SDK archive (extracted tree is kept, tarball is not)
+vendor/*.tar.gz
