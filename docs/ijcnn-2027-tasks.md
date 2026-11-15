@@ -13,6 +13,8 @@ the common sim/real contract so camera geometry is identical in both.
 - [ ] **Design the ROS2 pipeline.** Topic contract (joint states, 2x image + camera_info,
       target point, action), node layout, which machine runs what, recording path
       (bag vs direct LeRobot writer), how the coord enters in sim vs real.
+      *Proposal written 2026-11-15: [ros2-pipeline.md](ros2-pipeline.md), awaiting review
+      (also proposes the message rates below).*
 - [x] Decide the sim/VR host → **Linux desktop `danb-ubuntu` (192.168.1.73)**, Ubuntu
       26.04.1 + ROS2 Lyrical (same distro as the laptop), RTX 3080 Ti 12 GB, Python 3.14
       (torch/mujoco/pyopenxr all resolve). Quest 3 via WiVRn/Monado over USB-C.
@@ -28,8 +30,10 @@ the common sim/real contract so camera geometry is identical in both.
       [desktop-setup.md](desktop-setup.md#gotchas-found-porting-the-thesis-vr-viewer).
       Confirmed 2026-11-15 with the headset worn: view flags 0xf, head + both Touch Plus
       grip poses and trigger values tracking at 90 fps.
-- [ ] Port `vr_openxr_viewer.py` / `teleop_sim_vr.py` to Linux: Xlib/GLX binding, wait for
-      READY, catch `SessionNotFocused`, PRIME env; then MuJoCo scene in the headset.
+- [x] Port `vr_openxr_viewer.py` / `teleop_sim_vr.py` to Linux (2026-11-15): ports live in
+      `tools/vr/` (thesis repo untouched); MuJoCo scene in the headset, FOCUSED at 90 fps.
+      Arm teleop through them is untested (needs an arm + leader calibration on the desktop).
+      See [desktop-setup.md](desktop-setup.md#linux-port-of-the-thesis-vr-scripts-toolsvr).
 - [ ] Decide message rates: cameras 30 fps, policy 10–30 Hz, wired Ethernet or compressed
       image transport between laptop and PC.
 
