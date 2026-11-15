@@ -143,6 +143,52 @@ find WiVRn. The dashboard may rewrite this on first run; that's fine.
 - Pressing the Meta button drops the session to VISIBLE/SYNCHRONIZED and pauses `wait_frame`;
   it resumes to FOCUSED on return. The loop must tolerate this.
 
+### Linux port of the thesis VR scripts (`tools/vr/`)
+
+`tools/vr/vr_common.py` (shared `VRRenderer`, `ArmReader`, scene loading),
+`vr_openxr_viewer.py` and `teleop_sim_vr.py` are the Linux ports, written 2026-11-15. The
+originals in `lerobot-thesis/scripts/recording/` are untouched; the port only reads the
+thesis repo for the scene XML, meshes and `utils/constants.py` (`LEROBOT_THESIS` overrides
+the default `~/git/lerobot-thesis`).
+
+```bash
+cd ~/git/ros-so100/tools/vr        # with the env block from the smoke test above
+python vr_openxr_viewer.py --seconds 20 --snapshot /tmp/eye.png   # smoke test, saves a left-eye frame
+python teleop_sim_vr.py --test                                    # scene + controllers, no arm
+python teleop_sim_vr.py --port /dev/ttyACM0                       # leader arm drives the sim
+python teleop_sim_vr.py --no-vr --test                            # desktop MuJoCo viewer
+```
+
+Status (2026-11-15, Quest 3 over Wi-Fi, headset worn): both scripts go
+IDLE→READY→SYNCHRONIZED→VISIBLE→FOCUSED, hold **90 fps** with tracking valid, recentre on the
+first tracked frame and shut down cleanly; a left-eye frame captured from the live session
+shows the robot, bowl and overhead-camera footprint. `--no-vr --test` also runs. Arm teleop
+(`--teleop`, or `teleop_sim_vr.py` without `--test`) is **untested**: no arm on this desktop.
+
+Differences from the Windows originals:
+
+- Session begins on `READY`, layers are only submitted when `should_render`, and the loop
+  idles while the headset is asleep or the Meta menu is open.
+- Paced by the headset (90 Hz) with real-time physics, instead of a 30 fps sleep with 10
+  substeps per frame (which ran the sim at 0.6x real time).
+- Arm joints are addressed by name. In `so101_with_wrist_cam.xml` they are `qpos[7:13]`;
+  `qpos[0:7]` is the Duplo block's free joint, which the old viewer's `--teleop` wrote to.
+- The arm is read in a background thread in both scripts; thumbstick speeds are per second.
+- The scene recentres itself on the first tracked frame. Keyboard controls are on the
+  desktop mirror window (WASD/QE, R or Space, P) rather than the console.
+
+Gotchas:
+
+- `~/.config/openxr/1/active_runtime.json` only exists while the headset is connected: the
+  WiVRn dashboard removes it when the server session ends (seen 2026-11-15 15:55 after the
+  Quest dropped off Wi-Fi). "The loader was unable to find or load a runtime" means reconnect
+  the WiVRn client on the headset first.
+- Arm calibration: `leader_so100.json` / `follower_so100.json` were copied on 2026-11-15 from
+  `lerobot-thesis/calibration/` into `~/.cache/huggingface/lerobot/calibration/`
+  (`teleoperators/so100_leader_sts3250/`, `robots/so100_follower_sts3250/`). `scservo_sdk` was
+  installed into `~/venvs/so100` with `pip install --no-deps vendor/feetech-servo-sdk-1.0.0`
+  (then `git checkout` the egg-info files pip rewrites).
+
 ## Scratch
 
 `~/claude-scratch/` holds setup logs (`setup_venv*.log`) and test renders.
