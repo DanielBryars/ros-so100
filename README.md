@@ -48,3 +48,22 @@ ros2 launch so100_telemetry display.launch.py use_rviz:=false
 # Windows WSL: RViz on the desktop, subscribing over the LAN
 bash tools/wsl/run_rviz_wsl.sh
 ```
+
+## Leader + follower side by side (calibrated, SO-101 model)
+
+Both arms are plugged into the desktop (`danb-ubuntu`). The launch file reads them by USB
+serial number, maps encoder counts to radians with the LeRobot calibration JSONs in
+`so100_telemetry/config/`, and shows them on the SO-101 URDF, which has the same joint names
+and zero convention as the MuJoCo sim. Read-only: torque is never enabled.
+
+```bash
+source /opt/ros/lyrical/setup.bash
+source ~/git/ros-so100/ros2_ws/install/setup.bash
+ros2 launch so100_telemetry dual_arm.launch.py                    # publishers (machine with the arms)
+ros2 launch so100_telemetry dual_arm.launch.py publishers:=false use_rviz:=true   # RViz on another machine
+ros2 launch so100_telemetry dual_arm.launch.py use_rviz:=true     # everything on one machine
+```
+
+Topics: `/leader/joint_states`, `/follower/joint_states` (30 Hz, radians), TF frames prefixed
+`leader/` and `follower/` under `world`. A machine running only RViz needs this workspace
+built too, for the meshes in `so101_description`.

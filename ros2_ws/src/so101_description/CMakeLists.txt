@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.5)
+project(so101_description)
+
+find_package(ament_cmake REQUIRED)
+
+install(DIRECTORY urdf meshes rviz DESTINATION share/${PROJECT_NAME})
+
+ament_package()

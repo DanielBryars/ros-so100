@@ -8,7 +8,9 @@ RViz + robot_state_publisher consume later for visualization.
 Read-only: this node never enables torque or commands the motors. You can move
 the arm by hand and watch the numbers change.
 """
+import json
 import math
+import xml.etree.ElementTree as ET
 
 import rclpy
 from rclpy.node import Node
@@ -41,6 +43,28 @@ def counts_to_radians(counts):
     return (counts - 2048) / 4096.0 * 2.0 * math.pi
 
 
+def load_calibrated_mapping(calibration_file, urdf_file, joint_names):
+    """Build per-joint (count_min, count_max, rad_lower, rad_upper) for a calibrated mapping.
+
+    The LeRobot calibration JSON gives each motor's encoder range (range_min..range_max);
+    the URDF gives the matching joint limits in radians. Mapping one linearly onto the other
+    is exactly what the thesis pipeline does (via its -100..100 "normalised" units), so the
+    angles published here are the ones the MuJoCo sim would be driven to.
+    """
+    with open(calibration_file) as f:
+        calib = json.load(f)
+    limits = {}
+    for joint in ET.parse(urdf_file).getroot().findall('joint'):
+        limit = joint.find('limit')
+        if limit is not None:
+            limits[joint.get('name')] = (float(limit.get('lower')), float(limit.get('upper')))
+    mapping = []
+    for name in joint_names:
+        lower, upper = limits[name]
+        mapping.append((calib[name]['range_min'], calib[name]['range_max'], lower, upper))
+    return mapping
+
+
 class JointStatePublisher(Node):
     def __init__(self):
         # Every ROS2 node has a name; this is how it appears in `ros2 node list`.
@@ -53,6 +77,14 @@ class JointStatePublisher(Node):
         self.rate_hz = self.declare_parameter('rate_hz', 10.0).value
         self.ids = self.declare_parameter('ids', [1, 2, 3, 4, 5, 6]).value
         self.joint_names = self.declare_parameter('joint_names', DEFAULT_JOINT_NAMES).value
+        # Optional calibrated mapping (both must be set). Without them the node keeps the
+        # original uncalibrated counts_to_radians() behaviour.
+        calibration_file = self.declare_parameter('calibration_file', '').value
+        urdf_file = self.declare_parameter('urdf_file', '').value
+        self.mapping = None
+        if calibration_file and urdf_file:
+            self.mapping = load_calibrated_mapping(calibration_file, urdf_file, self.joint_names)
+            self.get_logger().info('Calibrated mapping from %s' % calibration_file)
 
         # --- Open the serial bus to the servos. ---
         self.port = PortHandler(self.port_name)
@@ -65,7 +97,8 @@ class JointStatePublisher(Node):
             'Opened %s @ %d bps, reading IDs %s' % (self.port_name, self.baud, self.ids))
 
         # --- Create the publisher: topic name, message type, queue depth. ---
-        self.pub = self.create_publisher(JointState, '/joint_states', 10)
+        # Relative name: it is /joint_states normally, /leader/joint_states in namespace leader.
+        self.pub = self.create_publisher(JointState, 'joint_states', 10)
 
         # --- Create a timer that fires the callback at rate_hz. ---
         self.timer = self.create_timer(1.0 / self.rate_hz, self.publish_once)
@@ -75,10 +108,14 @@ class JointStatePublisher(Node):
         """Read every servo and publish one JointState message."""
         positions = []
         ok = True
-        for sid in self.ids:
+        for i, sid in enumerate(self.ids):
             counts, comm, err = self.packet.read2ByteTxRx(
                 self.port, sid, ADDR_PRESENT_POSITION)
-            if comm == COMM_SUCCESS:
+            if comm == COMM_SUCCESS and self.mapping is not None:
+                c_min, c_max, lower, upper = self.mapping[i]
+                # Deliberately not clamped: an out-of-limit angle is a calibration clue.
+                positions.append(lower + (counts - c_min) / (c_max - c_min) * (upper - lower))
+            elif comm == COMM_SUCCESS:
                 positions.append(counts_to_radians(counts))
             else:
                 positions.append(math.nan)  # mark unreadable joints, keep going

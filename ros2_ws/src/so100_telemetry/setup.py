@@ -16,6 +16,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         # Install launch files so `ros2 launch so100_telemetry ...` can find them.
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        # Motor calibration (LeRobot format) for the calibrated joint mapping.
+        (os.path.join('share', package_name, 'config'), glob('config/*.json')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

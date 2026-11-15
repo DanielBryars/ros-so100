@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>so101_description</name>
+  <version>0.0.1</version>
+  <description>SO-101 URDF and meshes (so101_new_calib from TheRobotStudio/SO-ARM100, Simulation/SO101), with mesh paths rewritten to package:// URIs. Joint names and zero convention match the MuJoCo model used for sim.</description>
+  <maintainer email="daniel@bryars.com">danb</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
