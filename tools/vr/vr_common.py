@@ -63,13 +63,37 @@ def normalized_to_radians(normalized):
     return SIM_ACTION_LOW + t * (SIM_ACTION_HIGH - SIM_ACTION_LOW)
 
 
-def load_scene(name=DEFAULT_SCENE, settle_steps=100):
-    """Load a thesis MuJoCo scene and let it settle. Returns (model, data)."""
+def matte_black_floor(model, geom_name="floor"):
+    """Make the ground plane plain black: no checker texture, no reflection, no highlights.
+    Same look as the thesis's *_matte_black_floor scene, applied to whichever scene is loaded."""
+    gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
+    if gid < 0:
+        print(f"No geom named '{geom_name}'; floor left as it is")
+        return
+    mid = model.geom_matid[gid]
+    if mid < 0:
+        model.geom_rgba[gid] = [0.02, 0.02, 0.02, 1.0]
+        return
+    model.mat_texid[mid, :] = -1
+    model.mat_rgba[mid] = [0.02, 0.02, 0.02, 1.0]
+    model.mat_reflectance[mid] = 0.0
+    model.mat_specular[mid] = 0.0
+    model.mat_shininess[mid] = 0.0
+
+
+def load_scene(name=DEFAULT_SCENE, settle_steps=100, floor="black"):
+    """Load a thesis MuJoCo scene and let it settle. Returns (model, data).
+
+    floor="black" replaces the reflective checker ground with matte black; "scene" keeps
+    whatever the XML defines.
+    """
     path = Path(name)
     if not path.exists():
         path = THESIS_ROOT / "scenes" / name
     print(f"Loading MuJoCo scene: {path}")
     model = mujoco.MjModel.from_xml_path(str(path))
+    if floor == "black":
+        matte_black_floor(model)
     data = mujoco.MjData(model)
     for _ in range(settle_steps):
         mujoco.mj_step(model, data)
@@ -238,14 +262,23 @@ class VRRenderer:
     Same public surface as the thesis VRRenderer (init_all, render_frame, check_keyboard,
     cleanup, base_pos, view_yaw, show_*_cam_fov), so callers written against it keep working.
 
-    Controls: left stick = move, right stick = yaw / up-down, X (left) = recentre.
-    Desktop window (needs keyboard focus): WASD/QE = move, R or Space = recentre, P = print pose.
+    Controls
+      left stick / right stick   move / yaw and up-down
+      X or A                     recentre now: robot in front of where you are looking
+      Y or B                     recentre in RECENTER_DELAY seconds, so you can put the
+                                 controllers down and get into position at the real arm first
+      thumbstick click           put the sim robot's base where that controller is (rest the
+                                 controller on the real arm's base, pointing the way the arm
+                                 faces), so the virtual arm sits on top of the real one
+    Desktop window (needs keyboard focus): WASD/QE = move, R or Space = recentre,
+    T = delayed recentre, P = print pose.
     """
 
     MOVE_SPEED = 0.6   # m/s at full stick deflection
     YAW_SPEED = 0.9    # rad/s
     # Eye position relative to the robot base after a recentre (MuJoCo frame, yaw-aligned).
     RECENTER_EYE_POS = np.array([-0.2, 0.0, 0.55])
+    RECENTER_DELAY = 5.0  # seconds, for the Y/B/T delayed recentre
 
     def __init__(self, mj_model, mj_data, mirror=True, auto_recenter=True):
         self.model = mj_model
@@ -285,6 +318,8 @@ class VRRenderer:
         self._last_frame_t = None
         self._keys_down = set()
         self._recentered_once = False
+        self._recenter_at = None      # perf_counter deadline of a pending delayed recentre
+        self._countdown_shown = None
 
     # ---- init ----
 
@@ -355,6 +390,10 @@ class VRRenderer:
         self.stick_x_action = action("thumbstick_x", "Thumbstick X", xr.ActionType.FLOAT_INPUT)
         self.stick_y_action = action("thumbstick_y", "Thumbstick Y", xr.ActionType.FLOAT_INPUT)
         self.recenter_action = action("recenter", "Recenter Scene", xr.ActionType.BOOLEAN_INPUT)
+        self.delayed_action = action("recenter_delayed", "Recenter After Delay", xr.ActionType.BOOLEAN_INPUT)
+        self.place_action = action("place_robot", "Place Robot At Controller", xr.ActionType.BOOLEAN_INPUT)
+        self.grip_action = action("grip_pose", "Grip Pose", xr.ActionType.POSE_INPUT)
+        self.haptic_action = action("haptic", "Haptic", xr.ActionType.VIBRATION_OUTPUT)
 
         bindings = [
             xr.ActionSuggestedBinding(self.stick_x_action, path("/user/hand/left/input/thumbstick/x")),
@@ -362,7 +401,16 @@ class VRRenderer:
             xr.ActionSuggestedBinding(self.stick_x_action, path("/user/hand/right/input/thumbstick/x")),
             xr.ActionSuggestedBinding(self.stick_y_action, path("/user/hand/right/input/thumbstick/y")),
             xr.ActionSuggestedBinding(self.recenter_action, path("/user/hand/left/input/x/click")),
+            xr.ActionSuggestedBinding(self.recenter_action, path("/user/hand/right/input/a/click")),
+            xr.ActionSuggestedBinding(self.delayed_action, path("/user/hand/left/input/y/click")),
+            xr.ActionSuggestedBinding(self.delayed_action, path("/user/hand/right/input/b/click")),
         ]
+        for hand in ("left", "right"):
+            bindings += [
+                xr.ActionSuggestedBinding(self.place_action, path(f"/user/hand/{hand}/input/thumbstick/click")),
+                xr.ActionSuggestedBinding(self.grip_action, path(f"/user/hand/{hand}/input/grip/pose")),
+                xr.ActionSuggestedBinding(self.haptic_action, path(f"/user/hand/{hand}/output/haptic")),
+            ]
         arr = (xr.ActionSuggestedBinding * len(bindings))(*bindings)
         try:
             xr.suggest_interaction_profile_bindings(inst, xr.InteractionProfileSuggestedBinding(
@@ -372,6 +420,8 @@ class VRRenderer:
             print(f"Warning: could not bind Oculus Touch profile: {e}")
         xr.attach_session_action_sets(self.session, xr.SessionActionSetsAttachInfo(
             count_action_sets=1, action_sets=ctypes.pointer(self.action_set)))
+        self.hand_spaces = [xr.create_action_space(self.session, xr.ActionSpaceCreateInfo(
+            action=self.grip_action, subaction_path=p)) for p in self.hand_paths]
 
     def _init_swapchains(self):
         glfw.make_context_current(self.window)
@@ -464,7 +514,62 @@ class VRRenderer:
             action=action, subaction_path=self.hand_paths[hand]))
         return st.current_state if st.is_active and abs(st.current_state) > 0.1 else 0.0
 
-    def _handle_controller_input(self, dt):
+    def _pressed(self, action, hand=None):
+        st = xr.get_action_state_boolean(self.session, xr.ActionStateGetInfo(
+            action=action, subaction_path=xr.NULL_PATH if hand is None else self.hand_paths[hand]))
+        return bool(st.is_active and st.current_state and st.changed_since_last_sync)
+
+    def _buzz(self, seconds=0.1, amplitude=0.6):
+        """Short vibration on both controllers (feedback you can feel with the headset on)."""
+        vib = xr.HapticVibration(duration=int(seconds * 1e9), frequency=xr.FREQUENCY_UNSPECIFIED,
+                                 amplitude=amplitude)
+        for p in self.hand_paths:
+            try:
+                xr.apply_haptic_feedback(self.session, xr.HapticActionInfo(
+                    action=self.haptic_action, subaction_path=p),
+                    ctypes.cast(ctypes.pointer(vib), ctypes.POINTER(xr.HapticBaseHeader)).contents)
+            except Exception:
+                pass
+
+    def request_delayed_recenter(self):
+        self._recenter_at = time.perf_counter() + self.RECENTER_DELAY
+        self._countdown_shown = None
+        print(f"Recentring in {self.RECENTER_DELAY:.0f} s: get into position and look at where the robot should be")
+
+    def _tick_delayed_recenter(self):
+        if self._recenter_at is None:
+            return
+        left = self._recenter_at - time.perf_counter()
+        if left <= 0:
+            self._recenter_at = None
+            self._recenter_scene()
+            if self.is_focused:
+                self._buzz(0.4)
+        elif int(left) != self._countdown_shown:
+            self._countdown_shown = int(left)
+            print(f"  ...{int(left) + 1}")
+            if self.is_focused:
+                self._buzz(0.05, 0.3)
+
+    def _place_robot_at_controller(self, hand, display_time):
+        """Move the scene so the robot base (MuJoCo origin) sits at this controller, facing
+        the way the controller points."""
+        loc = xr.locate_space(self.hand_spaces[hand], self.reference_space, display_time)
+        need = xr.SPACE_LOCATION_POSITION_VALID_BIT | xr.SPACE_LOCATION_ORIENTATION_VALID_BIT
+        if (int(loc.location_flags) & int(need)) != int(need):
+            print("Cannot place robot: controller is not tracked")
+            return
+        p = loc.pose.position
+        fwd_mj = _xr_to_mj(_quat_rotate(loc.pose.orientation, [0.0, 0.0, -1.0]))
+        self.view_yaw = -np.arctan2(fwd_mj[1], fwd_mj[0])
+        # world = rotate_z(base_pos + xr_to_mj(p), yaw) must be the origin  =>  base_pos = -xr_to_mj(p)
+        self.base_pos = -_xr_to_mj([p.x, p.y, p.z])
+        self._recenter_at = None
+        self._buzz(0.2)
+        print(f"Robot base placed at the {'left' if hand == 0 else 'right'} controller: "
+              f"base_pos {np.round(self.base_pos, 2).tolist()}, yaw {np.degrees(self.view_yaw):.1f} deg")
+
+    def _handle_controller_input(self, dt, display_time):
         try:
             xr.sync_actions(self.session, xr.ActionsSyncInfo(
                 count_active_action_sets=1,
@@ -477,10 +582,15 @@ class VRRenderer:
         self.base_pos[0] += self._stick(self.stick_y_action, 0) * self.MOVE_SPEED * dt
         self.view_yaw += self._stick(self.stick_x_action, 1) * self.YAW_SPEED * dt
         self.base_pos[2] += self._stick(self.stick_y_action, 1) * self.MOVE_SPEED * dt
-        st = xr.get_action_state_boolean(self.session, xr.ActionStateGetInfo(
-            action=self.recenter_action, subaction_path=self.hand_paths[0]))
-        if st.is_active and st.current_state and st.changed_since_last_sync:
+        if self._pressed(self.recenter_action):
+            self._recenter_at = None
             self._recenter_scene()
+            self._buzz(0.2)
+        if self._pressed(self.delayed_action):
+            self.request_delayed_recenter()
+        for hand in (0, 1):
+            if self._pressed(self.place_action, hand):
+                self._place_robot_at_controller(hand, display_time)
 
     def _key_pressed_once(self, key):
         down = glfw.get_key(self.window, key) == glfw.PRESS
@@ -499,7 +609,10 @@ class VRRenderer:
         self.base_pos[1] += step * (held(glfw.KEY_A) - held(glfw.KEY_D))
         self.base_pos[2] += step * (held(glfw.KEY_Q) - held(glfw.KEY_E))
         if self._key_pressed_once(glfw.KEY_R) or self._key_pressed_once(glfw.KEY_SPACE):
+            self._recenter_at = None
             self._recenter_scene()
+        if self._key_pressed_once(glfw.KEY_T):
+            self.request_delayed_recenter()
         if self._key_pressed_once(glfw.KEY_P):
             print(f"base_pos: {np.round(self.base_pos, 3).tolist()}, yaw: {np.degrees(self.view_yaw):.1f} deg")
 
@@ -645,7 +758,7 @@ class VRRenderer:
 
         frame_state = xr.wait_frame(self.session)
         xr.begin_frame(self.session)
-        self._handle_controller_input(self.frame_dt)
+        self._handle_controller_input(self.frame_dt, frame_state.predicted_display_time)
 
         projection_views = []
         if frame_state.should_render:
@@ -665,6 +778,7 @@ class VRRenderer:
                 if self.tracking_valid and self.auto_recenter and not self._recentered_once:
                     self._recentered_once = True
                     self._recenter_scene()
+                self._tick_delayed_recenter()
 
                 for eye, (view, sc, fbos, (w, h)) in enumerate(
                         zip(views, self.swapchains, self.frame_buffers, self.sizes)):

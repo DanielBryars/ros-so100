@@ -25,13 +25,15 @@ def main():
     ap.add_argument("--follower", action="store_true", help="the arm is a follower, not a leader")
     ap.add_argument("--port", "-p", default=DEFAULT_PORT, help=f"arm serial port (default {DEFAULT_PORT})")
     ap.add_argument("--scene", default=DEFAULT_SCENE, help="scene file name in lerobot-thesis/scenes, or a path")
+    ap.add_argument("--floor", choices=["black", "scene"], default="black",
+                    help="black = matte black ground with no reflection (default); scene = as in the XML")
     ap.add_argument("--fov-overlays", action="store_true", help="draw the wrist/overhead camera footprints")
     ap.add_argument("--no-mirror", action="store_true", help="do not mirror the left eye to the desktop window")
     ap.add_argument("--seconds", type=float, default=0, help="exit after this long (0 = run until closed)")
     ap.add_argument("--snapshot", help="save one left-eye frame to this image file")
     args = ap.parse_args()
 
-    model, data = load_scene(args.scene)
+    model, data = load_scene(args.scene, floor=args.floor)
     qidx = arm_qpos_indices(model)
     arm = ArmReader(args.port, is_follower=args.follower) if args.teleop else None
     vr = VRRenderer(model, data, mirror=not args.no_mirror)
@@ -44,8 +46,9 @@ def main():
         vr.init_all()
         if arm:
             arm.connect()
-        print("Controls: left stick move, right stick yaw/height, X recentre; "
-              "desktop window WASD/QE, R recentre, P print. Ctrl+C to exit.")
+        print("Controls: sticks move/yaw/height; X or A recentre now; Y or B recentre in 5 s "
+              "(get to the real arm first);\n          thumbstick click = put the sim robot where that "
+              "controller is. Desktop window: WASD/QE, R, T (delayed), P.")
         while vr.render_frame():
             vr.check_keyboard()
             extra = ""

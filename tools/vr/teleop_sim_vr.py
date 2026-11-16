@@ -60,8 +60,9 @@ def run_vr(model, data, arm, args):
         vr.init_all()
         if arm:
             arm.connect()
-        print("Controls: left stick move, right stick yaw/height, X recentre; "
-              "desktop window WASD/QE, R recentre, P print. Ctrl+C to exit.")
+        print("Controls: sticks move/yaw/height; X or A recentre now; Y or B recentre in 5 s "
+              "(get to the real arm first);\n          thumbstick click = put the sim robot where that "
+              "controller is. Desktop window: WASD/QE, R, T (delayed), P.")
         stepper = RealTimeStepper(model, data)
         t0 = time.perf_counter()
         while apply_arm(arm, data):
@@ -111,12 +112,14 @@ def main():
     ap.add_argument("--no-vr", action="store_true", help="render to a desktop window instead of the headset")
     ap.add_argument("--follower", action="store_true", help="use a follower arm instead of the leader")
     ap.add_argument("--scene", default=DEFAULT_SCENE, help="scene file name in lerobot-thesis/scenes, or a path")
+    ap.add_argument("--floor", choices=["black", "scene"], default="black",
+                    help="black = matte black ground with no reflection (default); scene = as in the XML")
     ap.add_argument("--fov-overlays", action="store_true", help="draw the wrist/overhead camera footprints")
     ap.add_argument("--no-mirror", action="store_true", help="do not mirror the left eye to the desktop window")
     ap.add_argument("--seconds", type=float, default=0, help="exit after this long (0 = run until closed)")
     args = ap.parse_args()
 
-    model, data = load_scene(args.scene)
+    model, data = load_scene(args.scene, floor=args.floor)
     arm = None if args.test else ArmReader(args.port, is_follower=args.follower)
     (run_screen if args.no_vr else run_vr)(model, data, arm, args)
 
