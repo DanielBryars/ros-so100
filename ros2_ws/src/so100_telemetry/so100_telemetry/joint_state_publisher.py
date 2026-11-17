@@ -10,6 +10,7 @@ the arm by hand and watch the numbers change.
 """
 import json
 import math
+import time
 import xml.etree.ElementTree as ET
 
 import rclpy
@@ -87,14 +88,10 @@ class JointStatePublisher(Node):
             self.get_logger().info('Calibrated mapping from %s' % calibration_file)
 
         # --- Open the serial bus to the servos. ---
-        self.port = PortHandler(self.port_name)
         self.packet = PacketHandler(0)  # 0 = STS/SMS little-endian framing
-        if not self.port.openPort():
-            raise RuntimeError('Failed to open serial port %s' % self.port_name)
-        if not self.port.setBaudRate(self.baud):
-            raise RuntimeError('Failed to set baud %d' % self.baud)
-        self.get_logger().info(
-            'Opened %s @ %d bps, reading IDs %s' % (self.port_name, self.baud, self.ids))
+        self.port = None
+        self._next_reconnect = 0.0
+        self.open_port()
 
         # --- Create the publisher: topic name, message type, queue depth. ---
         # Relative name: it is /joint_states normally, /leader/joint_states in namespace leader.
@@ -104,7 +101,45 @@ class JointStatePublisher(Node):
         self.timer = self.create_timer(1.0 / self.rate_hz, self.publish_once)
         self._warned = False
 
+    def open_port(self):
+        self.port = PortHandler(self.port_name)
+        if not self.port.openPort():
+            raise RuntimeError('Failed to open serial port %s' % self.port_name)
+        if not self.port.setBaudRate(self.baud):
+            raise RuntimeError('Failed to set baud %d' % self.baud)
+        self.get_logger().info(
+            'Opened %s @ %d bps, reading IDs %s' % (self.port_name, self.baud, self.ids))
+
     def publish_once(self):
+        """Read and publish, surviving a USB drop-out.
+
+        The adapter occasionally drops off the bus and re-enumerates (seen as "disabled by
+        hub (EMI?)" in dmesg). Nothing is published while it is gone; we retry once a second.
+        """
+        now = time.monotonic()
+        if self.port is None:
+            if now < self._next_reconnect:
+                return
+            try:
+                self.open_port()
+                self._warned = False
+            except Exception as e:  # device node not back yet
+                self.port = None
+                self._next_reconnect = now + 1.0
+                self.get_logger().warning('Reconnect failed: %s' % e, throttle_duration_sec=10.0)
+                return
+        try:
+            self.read_and_publish()
+        except Exception as e:  # SerialException, termios.error, or a short read
+            self.get_logger().error('Serial link lost (%s); will reconnect.' % e)
+            try:
+                self.port.closePort()
+            except Exception:
+                pass
+            self.port = None
+            self._next_reconnect = now + 1.0
+
+    def read_and_publish(self):
         """Read every servo and publish one JointState message."""
         positions = []
         ok = True
@@ -130,7 +165,7 @@ class JointStatePublisher(Node):
         self.pub.publish(msg)
 
         if not ok and not self._warned:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 'One or more servos did not respond; publishing NaN for those. '
                 '(This warning is shown once.)')
             self._warned = True
@@ -144,7 +179,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.port.closePort()
+        if node.port is not None:
+            node.port.closePort()
         node.destroy_node()
         rclpy.shutdown()
 

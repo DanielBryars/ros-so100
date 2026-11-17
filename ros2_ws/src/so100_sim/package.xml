@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>so100_sim</name>
+  <version>0.0.1</version>
+  <description>MuJoCo backend for the SO100 pipeline: same topics as the real arm, optional VR view.</description>
+  <maintainer email="daniel@bryars.com">danb</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>so100_telemetry</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -176,6 +176,11 @@ Differences from the Windows originals:
 - The arm is read in a background thread in both scripts; thumbstick speeds are per second.
 - The scene recentres itself on the first tracked frame. Keyboard controls are on the
   desktop mirror window (WASD/QE, R or Space, P) rather than the console.
+- Resetting the view: X or A (or R/Space) recentres now; Y or B (or T) recentres after
+  5 s, so you can put the controllers down and get to the real arm first; a thumbstick
+  click puts the sim robot's base at that controller. The controllers buzz on each.
+- The floor is matte black with no reflection by default; `--floor scene` keeps the XML
+  floor.
 
 Gotchas:
 
