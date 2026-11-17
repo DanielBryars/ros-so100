@@ -170,3 +170,21 @@ stepping), `scripts/recording/record_sim_vr_pickplace.py` (record loop, dataset 
 `REAL_ROBOT_PLAN.md` and `corl_experiments/EXPERIMENTS_LOG.md` (failure modes). One thing to
 check when datasets are reused: the log says the 220-episode set has 1-indexed
 `episode_scenes`, which silently gives episode 0 a (0, 0) coord.
+
+## References for camera calibration
+
+Two talks Daniel attended that bear on finding where the cameras are relative to the arm
+(build-order step 3). Both were identified by searching the conference programmes; confirm
+they are the right ones.
+
+- **"ROS 2 roboreg: marker-free hand-eye calibration"**, ROSCon UK 2026, Edinburgh, 23 October
+  2026 (<https://roscon.org.uk/2026/>). Registers the camera to the arm with no calibration
+  target: it uses the joint positions and the robot model to predict what the arm should look
+  like in the image and solves for the camera pose that makes that match. Code believed to be
+  <https://github.com/lbr-stack/roboreg> (not checked against the talk).
+- **"AutoTrack: Smart, Easy and Automated Camera Tracking"**, Siemen Lens, Blender Conference
+  2026, Amsterdam (<https://www.youtube.com/watch?v=zvnUGii2TIY>; add-on at
+  <https://extensions.blender.org/add-ons/siemen-lens-blender-autotrack/>). Automatic feature
+  tracking and camera solve from video, so 3D objects can be composited into the footage.
+  Relevant to the moving wrist camera: a camera path solved from video, compared with the
+  gripper path from the joint angles, gives the camera-to-gripper transform without a target.

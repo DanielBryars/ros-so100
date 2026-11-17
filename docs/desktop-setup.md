@@ -147,9 +147,9 @@ find WiVRn. The dashboard may rewrite this on first run; that's fine.
 
 `tools/vr/vr_common.py` (shared `VRRenderer`, `ArmReader`, scene loading),
 `vr_openxr_viewer.py` and `teleop_sim_vr.py` are the Linux ports, written 2026-11-15. The
-originals in `lerobot-thesis/scripts/recording/` are untouched; the port only reads the
-thesis repo for the scene XML, meshes and `utils/constants.py` (`LEROBOT_THESIS` overrides
-the default `~/git/lerobot-thesis`).
+originals in `lerobot-thesis/scripts/recording/` are untouched, and nothing here reads the
+thesis repo at run time: the scene XML was copied to `scenes/` (its meshes are the ones in
+`ros2_ws/src/so101_description/meshes`) and the joint limits live in `vr_common.py`.
 
 ```bash
 cd ~/git/ros-so100/tools/vr        # with the env block from the smoke test above

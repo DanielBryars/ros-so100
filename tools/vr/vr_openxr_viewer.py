@@ -24,7 +24,7 @@ def main():
     ap.add_argument("--teleop", "-t", action="store_true", help="mirror a physical arm (kinematic)")
     ap.add_argument("--follower", action="store_true", help="the arm is a follower, not a leader")
     ap.add_argument("--port", "-p", default=DEFAULT_PORT, help=f"arm serial port (default {DEFAULT_PORT})")
-    ap.add_argument("--scene", default=DEFAULT_SCENE, help="scene file name in lerobot-thesis/scenes, or a path")
+    ap.add_argument("--scene", default=DEFAULT_SCENE, help="scene file name in scenes/, or a path")
     ap.add_argument("--floor", choices=["black", "scene"], default="black",
                     help="black = matte black ground with no reflection (default); scene = as in the XML")
     ap.add_argument("--fov-overlays", action="store_true", help="draw the wrist/overhead camera footprints")

@@ -40,7 +40,7 @@ the common sim/real contract so camera geometry is identical in both.
 ## Phase 1 — Infrastructure (weeks 1–2)
 
 - [ ] RoboStack spike on Windows: `rclpy` + MuJoCo + pyopenxr + CUDA Torch in one env.
-- [ ] Calibrate both real webcams (ChArUco board already in `lerobot-thesis/calibration/`)
+- [ ] Calibrate both real webcams (ChArUco board in `tools/calibration/`)
       → `CameraInfo` yaml per camera.
 - [ ] Laptop nodes: camera publishers (`v4l2_camera`/`usb_cam`) with `camera_info`,
       `image_proc` rectification, follower command subscriber (joint targets → servos).

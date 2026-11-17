@@ -9,15 +9,15 @@ binding), using the session handling proven in xr_render_linux.py:
   * render/submit layers only when should_render, otherwise submit an empty frame
   * xr.sync_actions raising SessionNotFocused is not an error
 
-The thesis repo is used read-only for the scene XML, meshes and joint limits. Point
-LEROBOT_THESIS at it if it is not in ~/git/lerobot-thesis.
+Self-contained in this repo: the scene XML is in scenes/, its meshes are the ones in
+ros2_ws/src/so101_description/meshes, and the joint limits are below. lerobot-thesis is not
+needed at run time.
 
 On this desktop the monitor is on the iGPU, so run with
     __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia
 (see docs/desktop-setup.md for the full env block when launching over SSH).
 """
 import ctypes
-import importlib.util
 import os
 import sys
 import threading
@@ -31,28 +31,18 @@ import xr
 import xr.exception
 from OpenGL import GL
 
-THESIS_ROOT = Path(os.environ.get("LEROBOT_THESIS", Path.home() / "git" / "lerobot-thesis"))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCENES_DIR = REPO_ROOT / "scenes"
 DEFAULT_SCENE = "so101_with_wrist_cam.xml"
 DEFAULT_PORT = "COM8" if sys.platform == "win32" else "/dev/ttyACM0"
 
 
-def _load_constants():
-    # Load utils/constants.py by path: importing the `utils` package would pull in the
-    # thesis training/vision stack via its __init__.
-    path = THESIS_ROOT / "utils" / "constants.py"
-    if not path.exists():
-        raise FileNotFoundError(f"{path} not found; set LEROBOT_THESIS to the lerobot-thesis checkout")
-    spec = importlib.util.spec_from_file_location("thesis_constants", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_C = _load_constants()
-MOTOR_NAMES = list(_C.MOTOR_NAMES)
-SIM_ACTION_LOW = np.asarray(_C.SIM_ACTION_LOW, dtype=np.float64)
-SIM_ACTION_HIGH = np.asarray(_C.SIM_ACTION_HIGH, dtype=np.float64)
-GRIPPER_IDX = _C.GRIPPER_IDX
+# Joint order and sim joint limits in radians (copied from lerobot-thesis utils/constants.py;
+# they match the actuator ctrlrange values in scenes/so101_with_wrist_cam.xml).
+MOTOR_NAMES = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
+SIM_ACTION_LOW = np.array([-1.91986, -1.74533, -1.69, -1.65806, -2.74385, -0.17453])
+SIM_ACTION_HIGH = np.array([1.91986, 1.74533, 1.69, 1.65806, 2.84121, 1.74533])
+GRIPPER_IDX = 5
 
 
 def normalized_to_radians(normalized):
@@ -82,14 +72,14 @@ def matte_black_floor(model, geom_name="floor"):
 
 
 def load_scene(name=DEFAULT_SCENE, settle_steps=100, floor="black"):
-    """Load a thesis MuJoCo scene and let it settle. Returns (model, data).
+    """Load a MuJoCo scene (by file name in scenes/, or a path) and let it settle. Returns (model, data).
 
     floor="black" replaces the reflective checker ground with matte black; "scene" keeps
     whatever the XML defines.
     """
     path = Path(name)
     if not path.exists():
-        path = THESIS_ROOT / "scenes" / name
+        path = SCENES_DIR / name
     print(f"Loading MuJoCo scene: {path}")
     model = mujoco.MjModel.from_xml_path(str(path))
     if floor == "black":

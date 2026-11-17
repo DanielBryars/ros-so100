@@ -111,7 +111,7 @@ def main():
     ap.add_argument("--test", "-t", action="store_true", help="no arm required")
     ap.add_argument("--no-vr", action="store_true", help="render to a desktop window instead of the headset")
     ap.add_argument("--follower", action="store_true", help="use a follower arm instead of the leader")
-    ap.add_argument("--scene", default=DEFAULT_SCENE, help="scene file name in lerobot-thesis/scenes, or a path")
+    ap.add_argument("--scene", default=DEFAULT_SCENE, help="scene file name in scenes/, or a path")
     ap.add_argument("--floor", choices=["black", "scene"], default="black",
                     help="black = matte black ground with no reflection (default); scene = as in the XML")
     ap.add_argument("--fov-overlays", action="store_true", help="draw the wrist/overhead camera footprints")
