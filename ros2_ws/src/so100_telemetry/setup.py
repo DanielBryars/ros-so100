@@ -30,6 +30,7 @@ setup(
         # it maps a command name to the main() function in our module.
         'console_scripts': [
             'joint_state_publisher = so100_telemetry.joint_state_publisher:main',
+            'image_preview = so100_telemetry.image_preview:main',
         ],
     },
 )

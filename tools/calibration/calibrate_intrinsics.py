@@ -25,9 +25,14 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 DEFAULT_BOARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'charuco_board.json')
 
 
-def load_board(path):
+def load_board(path, square_mm=None):
+    """Board from its JSON spec. square_mm overrides the printed square size (the markers
+    are scaled with it), for a print that did not come out at exactly 100%."""
     with open(path) as f:
         spec = json.load(f)
+    if square_mm:
+        spec['marker_mm'] *= square_mm / spec['square_mm']
+        spec['square_mm'] = square_mm
     dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, 'DICT_' + spec['dict']))
     board = cv2.aruco.CharucoBoard((spec['squares_x'], spec['squares_y']),
                                    spec['square_mm'] / 1000.0, spec['marker_mm'] / 1000.0,
@@ -137,6 +142,8 @@ def main():
     ap.add_argument('--camera', required=True, help='camera namespace, e.g. wrist_cam')
     ap.add_argument('--topic', help='image topic (default /<camera>/image_raw)')
     ap.add_argument('--board', default=DEFAULT_BOARD, help='ChArUco board JSON')
+    ap.add_argument('--square-mm', type=float,
+                    help='measured square size if the print is not exactly as in the board JSON')
     ap.add_argument('--min-views', type=int, default=30)
     ap.add_argument('--output', help='camera_info YAML to write')
     args = ap.parse_args()
@@ -149,7 +156,7 @@ def main():
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import Image
 
-    collector = Collector(load_board(args.board))
+    collector = Collector(load_board(args.board, args.square_mm))
     latest = {}
 
     def on_image(msg):
