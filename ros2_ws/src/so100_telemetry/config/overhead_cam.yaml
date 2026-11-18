@@ -1,0 +1,23 @@
+# RealSense D435 (serial 805312070137) colour stream at 640x480: factory intrinsics read
+# with `rs-enumerate-devices -c` on 2026-11-18. The factory model has zero distortion.
+# To be cross-checked with tools/calibration/calibrate_intrinsics.py.
+image_width: 640
+image_height: 480
+camera_name: overhead_cam
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [616.338012695312, 0.0, 329.031646728516, 0.0, 616.316223144531, 240.182556152344, 0.0, 0.0, 1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [616.338012695312, 0.0, 329.031646728516, 0.0, 0.0, 616.316223144531, 240.182556152344, 0.0, 0.0, 0.0, 1.0, 0.0]
