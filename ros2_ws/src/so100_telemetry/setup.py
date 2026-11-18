@@ -17,7 +17,7 @@ setup(
         # Install launch files so `ros2 launch so100_telemetry ...` can find them.
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         # Motor calibration (LeRobot format) for the calibrated joint mapping.
-        (os.path.join('share', package_name, 'config'), glob('config/*.json')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.json') + glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'joint_state_publisher = so100_telemetry.joint_state_publisher:main',
             'image_preview = so100_telemetry.image_preview:main',
+            'camera_node = so100_telemetry.camera_node:main',
         ],
     },
 )
