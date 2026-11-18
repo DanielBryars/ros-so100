@@ -7,7 +7,9 @@
 Hold the printed board (charuco_board.png next to this script, 6x9 squares of 30 mm)
 in front of the camera and move it around: near and far, tilted, and into every corner of
 the image. A view is kept automatically when the board is sharp enough, well detected and
-different from the views already kept. The window shows which parts of the image are covered.
+different from the views already kept. The window shows which parts of the image are covered
+and how many kept views are tilted; it finishes when there are enough views, enough coverage and
+enough tilted views (flat-on views alone do not pin down the focal length).
 Keys: C = calibrate now, U = drop the last view, Q/Esc = quit without saving.
 
 Writes a ROS camera_info YAML (default ros2_ws/src/so100_telemetry/config/<camera>.yaml).
@@ -23,6 +25,8 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_BOARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'charuco_board.json')
+
+TILT_DEG = 20.0   # a view counts as tilted above this; flat views alone leave focal length loose
 
 
 def load_board(path, square_mm=None):
@@ -49,6 +53,7 @@ class Collector:
         self.min_corners = min_corners
         self.min_shift_px = min_shift_px
         self.views = []          # list of (corners Nx1x2, ids Nx1)
+        self.tilts = []          # approximate board tilt of each kept view, degrees
         self.size = None         # (width, height)
 
     def detect(self, gray):
@@ -68,6 +73,22 @@ class Collector:
                     return False
         return True
 
+    def tilt(self, corners, ids):
+        """Approximate angle between the board and the image plane, in degrees. Uses a nominal
+        K (focal length = image width), which is good enough to tell flat from tilted."""
+        obj, img = self.board.matchImagePoints(corners, ids)
+        if obj is None or len(obj) < 6:
+            return 0.0
+        w, h = self.size
+        K = np.array([[w, 0, w / 2], [0, w, h / 2], [0, 0, 1]], float)
+        ok, rvec, _ = cv2.solvePnP(obj, img, K, None)
+        if not ok:
+            return 0.0
+        return float(np.degrees(np.arccos(min(1.0, abs(cv2.Rodrigues(rvec)[0][2, 2])))))
+
+    def tilted(self, min_deg=TILT_DEG):
+        return sum(t >= min_deg for t in self.tilts)
+
     def offer(self, gray):
         """Detect the board; keep the view if it adds something. Returns (detection, kept)."""
         self.size = (gray.shape[1], gray.shape[0])
@@ -77,6 +98,7 @@ class Collector:
         kept = self.is_new(*det)
         if kept:
             self.views.append(det)
+            self.tilts.append(self.tilt(*det))
         return det, kept
 
     def coverage(self, grid=(8, 6)):
@@ -119,7 +141,7 @@ def write_camera_info(path, name, size, K, dist):
         f.write(text)
 
 
-def draw(frame_bgr, collector, det, kept, min_views):
+def draw(frame_bgr, collector, det, kept, min_views, min_tilted):
     out = frame_bgr.copy()
     frac, cells = collector.coverage()
     h, w = out.shape[:2]
@@ -134,6 +156,10 @@ def draw(frame_bgr, collector, det, kept, min_views):
         cv2.aruco.drawDetectedCornersCharuco(out, det[0], det[1], (0, 255, 0) if kept else (0, 200, 255))
     cv2.putText(out, f"views {len(collector.views)}/{min_views}  coverage {frac * 100:.0f}%",
                 (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    now = f"  (now {collector.tilt(*det):.0f} deg)" if det is not None else ""
+    enough = collector.tilted() >= min_tilted
+    cv2.putText(out, f"tilted over {TILT_DEG:.0f} deg: {collector.tilted()}/{min_tilted}{now}",
+                (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255) if enough else (0, 200, 255), 2)
     return out
 
 
@@ -145,8 +171,14 @@ def main():
     ap.add_argument('--square-mm', type=float,
                     help='measured square size if the print is not exactly as in the board JSON')
     ap.add_argument('--min-views', type=int, default=30)
+    ap.add_argument('--min-coverage', type=float, default=0.9,
+                    help='fraction of the image the kept corners must reach (default 0.9; use about '
+                         '0.7 for a wrist camera, where the jaws hide the bottom of the image)')
+    ap.add_argument('--min-tilted', type=int,
+                    help=f'views that must be tilted over {TILT_DEG:.0f} degrees (default: half of --min-views)')
     ap.add_argument('--output', help='camera_info YAML to write')
     args = ap.parse_args()
+    min_tilted = args.min_views // 2 if args.min_tilted is None else args.min_tilted
     topic = args.topic or f'/{args.camera}/image_raw'
     output = args.output or os.path.join(
         REPO, 'ros2_ws', 'src', 'so100_telemetry', 'config', args.camera + '.yaml')
@@ -179,15 +211,17 @@ def main():
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
             sharp = cv2.Laplacian(gray, cv2.CV_64F).var() > 30.0   # skip motion-blurred frames
             det, kept = collector.offer(gray) if sharp else (collector.detect(gray), False)
-            cv2.imshow('intrinsics: ' + args.camera, draw(bgr, collector, det, kept, args.min_views))
+            cv2.imshow('intrinsics: ' + args.camera, draw(bgr, collector, det, kept, args.min_views, min_tilted))
             key = cv2.waitKey(1) & 0xFF
             if key in (ord('q'), 27):
                 print('Quit without saving.')
                 return
             if key == ord('u') and collector.views:
                 collector.views.pop()
+                collector.tilts.pop()
             frac, _ = collector.coverage()
-            done = key == ord('c') or (len(collector.views) >= args.min_views and frac >= 0.9)
+            done = key == ord('c') or (len(collector.views) >= args.min_views and frac >= args.min_coverage
+                                       and collector.tilted() >= min_tilted)
     finally:
         node.destroy_node()
         rclpy.try_shutdown()
@@ -197,6 +231,12 @@ def main():
         sys.exit(f'Only {len(collector.views)} views; need at least 8.')
     rms, K, dist = collector.calibrate()
     write_camera_info(output, args.camera, collector.size, K, dist)
+    # Keep the detections too, so the views can be re-fitted or scored against another K later.
+    views_path = os.path.splitext(str(output))[0] + '_views.npz'
+    np.savez(views_path, size=collector.size,
+             **{f'corners_{n}': c for n, (c, _) in enumerate(collector.views)},
+             **{f'ids_{n}': i for n, (_, i) in enumerate(collector.views)})
+    print(f'Kept the {len(collector.views)} views in {views_path}')
     print(f'{len(collector.views)} views, RMS reprojection error {rms:.3f} px (aim for < 0.5)')
     print(f'fx {K[0, 0]:.1f}  fy {K[1, 1]:.1f}  cx {K[0, 2]:.1f}  cy {K[1, 2]:.1f}')
     print('distortion', np.round(dist, 4))
