@@ -7,10 +7,15 @@ In MJPEG the same cameras gave no bad frames.
     ros2 run so100_telemetry camera_node --ros-args -r __ns:=/wrist_cam -p device:=/dev/video0
 
 Parameters: device, width, height, fps, fourcc, frame_id, camera_info_file (a ROS
-camera_info YAML as written by tools/calibration/calibrate_intrinsics.py; optional).
+camera_info YAML as written by tools/calibration/calibrate_intrinsics.py; optional) and
+controls (V4L2 controls set each time the camera is opened, in order, e.g.
+'auto_exposure=1,exposure_time_absolute=100,gain=40'; tools/calibration/lock_exposure.py
+finds the values), and colour_gains ('r,g,b' multipliers, for the tint a camera's manual
+white balance cannot remove).
 If the camera unplugs, the node keeps retrying once a second.
 """
 import os
+import subprocess
 import time
 
 import cv2
@@ -48,6 +53,10 @@ class CameraNode(Node):
         self.fourcc = p('fourcc', 'MJPG').value
         self.frame_id = p('frame_id', 'camera').value
         info_file = p('camera_info_file', '').value
+        # 'r,g,b' multipliers applied after capture; empty = none
+        gains = [float(v) for v in p('colour_gains', '').value.split(',') if v.strip()]
+        self.bgr_gains = (gains[2], gains[1], gains[0], 0) if gains else None
+        self.controls = [c for c in p('controls', '').value.split(',') if c.strip()]
 
         self.info, calibrated = load_camera_info(info_file, self.width, self.height)
         self.info.header.frame_id = self.frame_id
@@ -73,6 +82,13 @@ class CameraNode(Node):
             cap.release()
             raise RuntimeError(f'{self.device} gave {got}, wanted {(self.width, self.height)}')
         self.get_logger().info(f'{self.device}: streaming {got[0]}x{got[1]} {fourcc}')
+        for ctrl in self.controls:   # one at a time: later ones can depend on earlier ones
+            r = subprocess.run(['v4l2-ctl', '-d', self.device, '--set-ctrl', ctrl.strip()],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                self.get_logger().error(f'{self.device}: could not set {ctrl}: {r.stderr.strip()}')
+        if self.controls:
+            self.get_logger().info(f'{self.device}: set ' + ', '.join(self.controls))
         self.cap = cap
         return True
 
@@ -92,6 +108,8 @@ class CameraNode(Node):
                 self.cap = None
                 time.sleep(1.0)
                 continue
+            if self.bgr_gains is not None:
+                bgr = cv2.multiply(bgr, self.bgr_gains)   # saturates at 255
             msg = Image(height=self.height, width=self.width, encoding='rgb8',
                         is_bigendian=0, step=self.width * 3)
             msg.header.stamp = stamp
