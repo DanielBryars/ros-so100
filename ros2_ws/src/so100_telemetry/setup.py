@@ -32,6 +32,7 @@ setup(
             'joint_state_publisher = so100_telemetry.joint_state_publisher:main',
             'image_preview = so100_telemetry.image_preview:main',
             'camera_node = so100_telemetry.camera_node:main',
+            'joint_readout = so100_telemetry.joint_readout:main',
         ],
     },
 )

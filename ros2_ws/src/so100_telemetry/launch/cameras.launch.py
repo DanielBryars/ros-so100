@@ -8,6 +8,11 @@ rgb8, and optionally /leader/wrist_cam/image_raw. Set a device to '' to skip tha
 camera_info carries the intrinsics from config/<camera>.yaml once that file exists
 (tools/calibration/calibrate_intrinsics.py writes it); rectification (image_rect) comes after.
 
+`depth:=true` (the default) also starts the RealSense driver for the overhead camera's depth
+stream only: /overhead_cam/depth/image_rect_raw (16UC1, millimetres, 848x480) and
+/overhead_cam/depth/camera_info, in the depth sensor's own frame (not aligned to colour).
+Colour stays on our own node, so its calibration and exposure lock are unchanged.
+
 The two arm cameras are identical (same USB id and no serial number), so /dev/v4l/by-id
 cannot tell them apart; the defaults use by-path, i.e. which USB socket each is plugged into.
 """
@@ -70,12 +75,20 @@ def generate_launch_description():
         DeclareLaunchArgument('overhead_device', default_value=REALSENSE_COLOUR),
         DeclareLaunchArgument('overhead_fourcc', default_value='YUYV',
                               description='MJPG for an ordinary webcam'),
+        DeclareLaunchArgument('depth', default_value='true',
+                              description='overhead RealSense depth stream'),
         DeclareLaunchArgument('leader_wrist', default_value='false'),
         DeclareLaunchArgument('leader_wrist_device', default_value=BY_PATH % '1.1'),
         camera('wrist_cam', LaunchConfiguration('wrist_device'), is_set('wrist_device'),
                locked=WRIST_LOCKED),
         camera('overhead_cam', LaunchConfiguration('overhead_device'), is_set('overhead_device'),
                fourcc=LaunchConfiguration('overhead_fourcc'), locked=OVERHEAD_LOCKED),
+        Node(package='realsense2_camera', executable='realsense2_camera_node',
+             name='overhead_cam', namespace='',
+             condition=IfCondition(LaunchConfiguration('depth')),
+             parameters=[{'camera_name': 'overhead_cam', 'enable_color': False,
+                          'enable_infra1': False, 'enable_infra2': False, 'enable_depth': True,
+                          'depth_module.depth_profile': '848x480x30', 'publish_tf': False}]),
         camera('leader/wrist_cam', LaunchConfiguration('leader_wrist_device'),
                IfCondition(LaunchConfiguration('leader_wrist')), frame='leader_wrist_cam'),
     ])

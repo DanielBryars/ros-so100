@@ -63,3 +63,4 @@ vendor/*.tar.gz
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+MUJOCO_LOG.TXT
